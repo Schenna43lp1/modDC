@@ -1,27 +1,29 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits, PermissionsBitField } = require('discord.js');
 
+// Erstelle neuen Client mit nötigen Intents
 const client = new Client({
   intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.Guilds, // Serverinformationen
+    GatewayIntentBits.GuildMessages, // Nachrichten in Servern
+    GatewayIntentBits.MessageContent, // Inhalt von Nachrichten lesen
+    GatewayIntentBits.GuildMembers, // Mitglieder verwalten
   ],
 });
 
-const TOKEN = process.env.TOKEN;
-const PREFIX = '!';
+const TOKEN = process.env.TOKEN; // Bot Token aus .env
+const PREFIX = '!'; // Befehlspräfix
 
 client.once('ready', () => {
   console.log(`Bot ist eingeloggt als ${client.user.tag}`);
 });
 
 client.on('messageCreate', async message => {
-  if (!message.guild) return;
-  if (message.author.bot) return;
-  if (!message.content.startsWith(PREFIX)) return;
+  if (!message.guild) return; // Nur Server-Nachrichten, keine DMs
+  if (message.author.bot) return; // Keine Bot-Nachrichten
+  if (!message.content.startsWith(PREFIX)) return; // Nur Befehle
 
+  // Rechtecheck: nur mit KickMembers Recht kann man Befehle nutzen
   if (!message.member.permissions.has(PermissionsBitField.Flags.KickMembers)) {
     return message.reply('Du hast keine Rechte, diesen Befehl zu benutzen.');
   }
@@ -29,8 +31,10 @@ client.on('messageCreate', async message => {
   const args = message.content.slice(PREFIX.length).trim().split(/ +/);
   const command = args.shift().toLowerCase();
 
+  // Channel für Moderations-Logs suchen
   const logChannel = message.guild.channels.cache.find(ch => ch.name === 'mod-logs');
 
+  // Warnungen im RAM speichern
   if (!client.warns) client.warns = new Map();
 
   if (command === 'kick') {
@@ -44,7 +48,6 @@ client.on('messageCreate', async message => {
 
     if (logChannel) logChannel.send(`**Kick:** ${user.user.tag} von ${message.author.tag}\nGrund: ${reason}`);
   }
-
   else if (command === 'ban') {
     const user = message.mentions.members.first();
     if (!user) return message.reply('Bitte erwähne einen Benutzer zum Bannen.');
@@ -56,11 +59,11 @@ client.on('messageCreate', async message => {
 
     if (logChannel) logChannel.send(`**Ban:** ${user.user.tag} von ${message.author.tag}\nGrund: ${reason}`);
   }
-
   else if (command === 'mute') {
     const user = message.mentions.members.first();
     if (!user) return message.reply('Bitte erwähne einen Benutzer zum Muten.');
 
+    // Rolle "Muted" suchen oder erstellen
     let muteRole = message.guild.roles.cache.find(r => r.name === 'Muted');
     if (!muteRole) {
       try {
@@ -69,6 +72,7 @@ client.on('messageCreate', async message => {
           color: '#555555',
           permissions: [],
         });
+        // In allen Channels SendMessages & Speak verbieten
         for (const [, channel] of message.guild.channels.cache) {
           await channel.permissionOverwrites.edit(muteRole, {
             SendMessages: false,
@@ -88,7 +92,6 @@ client.on('messageCreate', async message => {
 
     if (logChannel) logChannel.send(`**Mute:** ${user.user.tag} von ${message.author.tag}`);
   }
-
   else if (command === 'unmute') {
     const user = message.mentions.members.first();
     if (!user) return message.reply('Bitte erwähne einen Benutzer zum Entmuten.');
@@ -103,7 +106,6 @@ client.on('messageCreate', async message => {
 
     if (logChannel) logChannel.send(`**Unmute:** ${user.user.tag} von ${message.author.tag}`);
   }
-
   else if (command === 'warn') {
     const user = message.mentions.members.first();
     if (!user) return message.reply('Bitte erwähne einen Benutzer zum Verwarnen.');
@@ -117,7 +119,6 @@ client.on('messageCreate', async message => {
 
     if (logChannel) logChannel.send(`**Warn:** ${user.user.tag} von ${message.author.tag}\nGrund: ${reason}`);
   }
-
   else if (command === 'warns') {
     const user = message.mentions.members.first() || message.member;
     const warns = client.warns.get(user.id) || [];
