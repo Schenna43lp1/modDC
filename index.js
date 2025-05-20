@@ -1,5 +1,3 @@
-
-
 require('dotenv').config();
 const { Client, GatewayIntentBits, Partials, PermissionsBitField } = require('discord.js');
 
@@ -31,7 +29,6 @@ client.on('messageCreate', async (message) => {
     const args = message.content.slice(prefix.length).trim().split(/ +/);
     const command = args.shift().toLowerCase();
 
-    // Nur User mit Moderator- oder Admin-Rechten dürfen Befehle ausführen
     if (!message.member.permissions.has(PermissionsBitField.Flags.ManageMessages)) {
         return message.reply("Du hast keine Berechtigung, diesen Befehl zu verwenden.");
     }
