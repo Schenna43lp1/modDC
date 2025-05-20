@@ -1,132 +1,146 @@
-require('dotenv').config();
-const { Client, GatewayIntentBits, PermissionsBitField } = require('discord.js');
 
-// Erstelle neuen Client mit nötigen Intents
+
+require('dotenv').config();
+const { Client, GatewayIntentBits, Partials, PermissionsBitField } = require('discord.js');
+
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds, // Serverinformationen
-    GatewayIntentBits.GuildMessages, // Nachrichten in Servern
-    GatewayIntentBits.MessageContent, // Inhalt von Nachrichten lesen
-    GatewayIntentBits.GuildMembers, // Mitglieder verwalten
-  ],
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMembers,
+    ],
+    partials: [Partials.Channel]
 });
 
-const TOKEN = process.env.TOKEN; // Bot Token aus .env
-const PREFIX = '!'; // Befehlspräfix
+const prefix = '!';
+const muteRoleName = 'Muted';
+
+// Speicher für Warnungen (nur für Demo, nicht persistent)
+const warnings = new Map();
 
 client.once('ready', () => {
-  console.log(`Bot ist eingeloggt als ${client.user.tag}`);
+    console.log(`Bot ist online als ${client.user.tag}`);
 });
 
-client.on('messageCreate', async message => {
-  if (!message.guild) return; // Nur Server-Nachrichten, keine DMs
-  if (message.author.bot) return; // Keine Bot-Nachrichten
-  if (!message.content.startsWith(PREFIX)) return; // Nur Befehle
+client.on('messageCreate', async (message) => {
+    if (message.author.bot) return;
+    if (!message.guild) return;
+    if (!message.content.startsWith(prefix)) return;
 
-  // Rechtecheck: nur mit KickMembers Recht kann man Befehle nutzen
-  if (!message.member.permissions.has(PermissionsBitField.Flags.KickMembers)) {
-    return message.reply('Du hast keine Rechte, diesen Befehl zu benutzen.');
-  }
+    const args = message.content.slice(prefix.length).trim().split(/ +/);
+    const command = args.shift().toLowerCase();
 
-  const args = message.content.slice(PREFIX.length).trim().split(/ +/);
-  const command = args.shift().toLowerCase();
-
-  // Channel für Moderations-Logs suchen
-  const logChannel = message.guild.channels.cache.find(ch => ch.name === 'mod-logs');
-
-  // Warnungen im RAM speichern
-  if (!client.warns) client.warns = new Map();
-
-  if (command === 'kick') {
-    const user = message.mentions.members.first();
-    if (!user) return message.reply('Bitte erwähne einen Benutzer zum Kicken.');
-    if (!user.kickable) return message.reply('Ich kann diesen Benutzer nicht kicken.');
-
-    const reason = args.join(' ') || 'Kein Grund angegeben';
-    await user.kick(reason);
-    message.channel.send(`${user.user.tag} wurde gekickt. Grund: ${reason}`);
-
-    if (logChannel) logChannel.send(`**Kick:** ${user.user.tag} von ${message.author.tag}\nGrund: ${reason}`);
-  }
-  else if (command === 'ban') {
-    const user = message.mentions.members.first();
-    if (!user) return message.reply('Bitte erwähne einen Benutzer zum Bannen.');
-    if (!user.bannable) return message.reply('Ich kann diesen Benutzer nicht bannen.');
-
-    const reason = args.join(' ') || 'Kein Grund angegeben';
-    await user.ban({ reason });
-    message.channel.send(`${user.user.tag} wurde gebannt. Grund: ${reason}`);
-
-    if (logChannel) logChannel.send(`**Ban:** ${user.user.tag} von ${message.author.tag}\nGrund: ${reason}`);
-  }
-  else if (command === 'mute') {
-    const user = message.mentions.members.first();
-    if (!user) return message.reply('Bitte erwähne einen Benutzer zum Muten.');
-
-    // Rolle "Muted" suchen oder erstellen
-    let muteRole = message.guild.roles.cache.find(r => r.name === 'Muted');
-    if (!muteRole) {
-      try {
-        muteRole = await message.guild.roles.create({
-          name: 'Muted',
-          color: '#555555',
-          permissions: [],
-        });
-        // In allen Channels SendMessages & Speak verbieten
-        for (const [, channel] of message.guild.channels.cache) {
-          await channel.permissionOverwrites.edit(muteRole, {
-            SendMessages: false,
-            Speak: false,
-            AddReactions: false,
-          });
-        }
-      } catch (err) {
-        return message.reply('Konnte die Muted Rolle nicht erstellen. Bitte gib mir die nötigen Rechte.');
-      }
+    // Nur User mit Moderator- oder Admin-Rechten dürfen Befehle ausführen
+    if (!message.member.permissions.has(PermissionsBitField.Flags.ManageMessages)) {
+        return message.reply("Du hast keine Berechtigung, diesen Befehl zu verwenden.");
     }
 
-    if (user.roles.cache.has(muteRole.id)) return message.reply('Der Benutzer ist bereits gemutet.');
+    if (command === 'warn') {
+        const user = message.mentions.members.first();
+        if (!user) return message.reply("Bitte erwähne einen Benutzer.");
+        const reason = args.slice(1).join(' ') || "Kein Grund angegeben";
 
-    await user.roles.add(muteRole);
-    message.channel.send(`${user.user.tag} wurde gemutet.`);
+        let userWarnings = warnings.get(user.id) || 0;
+        userWarnings++;
+        warnings.set(user.id, userWarnings);
 
-    if (logChannel) logChannel.send(`**Mute:** ${user.user.tag} von ${message.author.tag}`);
-  }
-  else if (command === 'unmute') {
-    const user = message.mentions.members.first();
-    if (!user) return message.reply('Bitte erwähne einen Benutzer zum Entmuten.');
+        message.channel.send(`${user} wurde verwarnt. Grund: ${reason} (Anzahl Warnungen: ${userWarnings})`);
+    }
 
-    const muteRole = message.guild.roles.cache.find(r => r.name === 'Muted');
-    if (!muteRole) return message.reply('Es gibt keine Muted Rolle.');
+    else if (command === 'mute') {
+        const user = message.mentions.members.first();
+        if (!user) return message.reply("Bitte erwähne einen Benutzer.");
+        if (user.permissions.has(PermissionsBitField.Flags.ManageMessages)) return message.reply("Du kannst keine Moderatoren muten.");
 
-    if (!user.roles.cache.has(muteRole.id)) return message.reply('Der Benutzer ist nicht gemutet.');
+        let muteRole = message.guild.roles.cache.find(r => r.name === muteRoleName);
+        if (!muteRole) {
+            try {
+                muteRole = await message.guild.roles.create({
+                    name: muteRoleName,
+                    color: 'Grey',
+                    permissions: []
+                });
+                message.guild.channels.cache.forEach(async (channel) => {
+                    await channel.permissionOverwrites.edit(muteRole, {
+                        SendMessages: false,
+                        AddReactions: false,
+                        Speak: false
+                    });
+                });
+            } catch (err) {
+                console.error(err);
+                return message.reply("Konnte die Muted-Rolle nicht erstellen.");
+            }
+        }
 
-    await user.roles.remove(muteRole);
-    message.channel.send(`${user.user.tag} wurde entmutet.`);
+        const duration = parseInt(args[1]) || 10; // default 10 Minuten
+        if (user.roles.cache.has(muteRole.id)) return message.reply("Der Benutzer ist bereits gemutet.");
 
-    if (logChannel) logChannel.send(`**Unmute:** ${user.user.tag} von ${message.author.tag}`);
-  }
-  else if (command === 'warn') {
-    const user = message.mentions.members.first();
-    if (!user) return message.reply('Bitte erwähne einen Benutzer zum Verwarnen.');
-    const reason = args.join(' ') || 'Kein Grund angegeben';
+        try {
+            await user.roles.add(muteRole);
+            message.channel.send(`${user} wurde für ${duration} Minuten gemutet.`);
 
-    let warns = client.warns.get(user.id) || [];
-    warns.push({ moderator: message.author.tag, reason, date: new Date() });
-    client.warns.set(user.id, warns);
+            setTimeout(async () => {
+                if (user.roles.cache.has(muteRole.id)) {
+                    await user.roles.remove(muteRole);
+                    message.channel.send(`${user} wurde entmutet.`);
+                }
+            }, duration * 60 * 1000);
 
-    message.channel.send(`${user.user.tag} wurde verwarnt. Grund: ${reason}`);
+        } catch (err) {
+            console.error(err);
+            message.reply("Fehler beim Muting.");
+        }
+    }
 
-    if (logChannel) logChannel.send(`**Warn:** ${user.user.tag} von ${message.author.tag}\nGrund: ${reason}`);
-  }
-  else if (command === 'warns') {
-    const user = message.mentions.members.first() || message.member;
-    const warns = client.warns.get(user.id) || [];
-    if (warns.length === 0) return message.reply(`${user.user.tag} hat keine Verwarnungen.`);
+    else if (command === 'unmute') {
+        const user = message.mentions.members.first();
+        if (!user) return message.reply("Bitte erwähne einen Benutzer.");
 
-    let warnList = warns.map((w, i) => `${i + 1}. Von ${w.moderator} am ${w.date.toLocaleDateString()}: ${w.reason}`).join('\n');
-    message.channel.send(`Verwarnungen für ${user.user.tag}:\n${warnList}`);
-  }
+        const muteRole = message.guild.roles.cache.find(r => r.name === muteRoleName);
+        if (!muteRole) return message.reply("Keine Muted-Rolle auf diesem Server.");
+
+        if (!user.roles.cache.has(muteRole.id)) return message.reply("Der Benutzer ist nicht gemutet.");
+
+        try {
+            await user.roles.remove(muteRole);
+            message.channel.send(`${user} wurde entmutet.`);
+        } catch (err) {
+            console.error(err);
+            message.reply("Fehler beim Entmuten.");
+        }
+    }
+
+    else if (command === 'kick') {
+        const user = message.mentions.members.first();
+        if (!user) return message.reply("Bitte erwähne einen Benutzer.");
+        if (!user.kickable) return message.reply("Ich kann diesen Benutzer nicht kicken.");
+        const reason = args.slice(1).join(' ') || "Kein Grund angegeben";
+
+        try {
+            await user.kick(reason);
+            message.channel.send(`${user} wurde gekickt. Grund: ${reason}`);
+        } catch (err) {
+            console.error(err);
+            message.reply("Fehler beim Kicken.");
+        }
+    }
+
+    else if (command === 'ban') {
+        const user = message.mentions.members.first();
+        if (!user) return message.reply("Bitte erwähne einen Benutzer.");
+        if (!user.bannable) return message.reply("Ich kann diesen Benutzer nicht bannen.");
+        const reason = args.slice(1).join(' ') || "Kein Grund angegeben";
+
+        try {
+            await user.ban({ reason });
+            message.channel.send(`${user} wurde gebannt. Grund: ${reason}`);
+        } catch (err) {
+            console.error(err);
+            message.reply("Fehler beim Bannen.");
+        }
+    }
 });
 
-client.login(TOKEN);
+client.login(process.env.DISCORD_TOKEN);
