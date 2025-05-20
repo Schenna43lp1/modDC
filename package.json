@@ -1,14 +1,11 @@
-
 {
-  "name": "simple-discord-mod-bot",
+  "name": "discord-moderation-bot",
   "version": "1.0.0",
-  "description": "Ein einfacher Discord Moderationsbot mit Mute, Warn und Logs",
+  "description": "Ein einfacher Discord Moderations-Bot mit Node.js",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
-  "author": "Dein Name",
-  "license": "MIT",
   "dependencies": {
     "discord.js": "^14.11.0",
     "dotenv": "^16.3.1"
